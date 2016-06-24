@@ -106,9 +106,9 @@ namespace MapControlTest
             updateTimer = new DispatcherTimer();
             updateTimer.Interval = new TimeSpan(0, 0, 1);
             updateTimer.Tick += UpdateTimer_Tick;
-            updateTimer.Start();
             updateCount = 0;
             errorBox.Text = "Initialized";
+            updateTimer.Start();
         }
 
         /// <summary>
@@ -135,18 +135,17 @@ namespace MapControlTest
 
                 // Update the location in Map
                 UpdateLocation(carLocation.gps_data);
-                
-                // Start timer again
                 updateCount += 1;
                 errorBox.Text = string.Format("Updated {0} times", updateCount);
-                updateTimer.Interval = new TimeSpan(0, 0, 5);
-                updateTimer.Start();
             }
             catch(Exception ex)
             {
                 errorBox.Text = "Exception: " + ex.Message;
             }
-            
+            // Start timer again
+            updateTimer.Interval = new TimeSpan(0, 0, 5);
+            updateTimer.Start();
+
         }
         
         // Update the Map Icon to match with the given gps location data 
@@ -339,12 +338,14 @@ namespace MapControlTest
                 // Start tracking
                 trackingEnabled = true;
                 StartStopButton.Content = "Stop";
+                errorBox.Text = "Started Logging";
             }
             else
             {
                 // Stop tracking
                 trackingEnabled = false;
                 StartStopButton.Content = "Start";
+                errorBox.Text = "Stopped Logging";
             }
         }
     }
