@@ -1,0 +1,25 @@
+﻿<Page
+    x:Class="MapControlTest.MainPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:MapControlTest"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:maps="using:Windows.UI.Xaml.Controls.Maps"
+    mc:Ignorable="d">
+
+    <Grid Margin="10" Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="9*"/>
+            <RowDefinition Height="2*"/>
+            <RowDefinition Height="2*"/>
+        </Grid.RowDefinitions>
+        <Button x:Name="StartStopButton" Content ="" Margin="0,10,0,10" Click="StartStopButton_Click"  
+                Grid.Row="1" HorizontalAlignment="Center" VerticalAlignment="Top"/>
+        <TextBlock Name="errorBox" Grid.Row="2" TextAlignment="Center" TextWrapping="Wrap"/>
+        <maps:MapControl x:Name="myMap" TransitFeaturesVisible="False" HorizontalAlignment="Stretch"
+                         VerticalAlignment="Stretch" Loaded="MyMap_Loaded"
+                         MapServiceToken="jNX12JzTvR7chFjby1PN~qK56euxFkLwXAQTZ6ftWbw~AgCyixF1WaNpROiSEo0Hz8uENBrhfdP7UhhIRkDi7DLlHg5s1VIiIDFZERY7Kd6o"
+                         />
+    </Grid>
+</Page>
