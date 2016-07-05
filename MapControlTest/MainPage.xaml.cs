@@ -33,11 +33,13 @@ namespace MapControlTest
     /// </summary>
     public sealed partial class MainPage : Page
     {
+        private AppConfig appConfig;
         private BasicGeoposition carPos;
         private MapIcon icon;
         private int updateCount;
         private DispatcherTimer updateTimer;
         private bool trackingEnabled;
+        private bool loggingEnabled;
         private RandomAccessStreamReference img_0;
         private RandomAccessStreamReference img_24;
         private RandomAccessStreamReference img_48;
@@ -60,16 +62,21 @@ namespace MapControlTest
             this.InitializeComponent();
             carPos = new BasicGeoposition();
             icon = new MapIcon();
+            appConfig = new AppConfig();
+
+            // embeddedworld.co.nf/get_last_loc_json.php
+            appConfig.locationApiUrl = "http://positioning.hol.es/get_last_loc_json.php";
+            appConfig.setLogStatusUrl = "http://positioning.hol.es/set_logging.php";
             trackingEnabled = false;
             StartStopButton.Content = "Start";
         }
 
         /// <summary>
-        /// Initializes most members on once Map gets loaded
+        /// Initializes most of the members once Map gets loaded
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
-        private void MyMap_Loaded(object sender, RoutedEventArgs e)
+        private async void MyMap_Loaded(object sender, RoutedEventArgs e)
         {
             // Initialize center latitude and longitude some location
             carPos.Latitude = 9.610135;
@@ -102,6 +109,23 @@ namespace MapControlTest
             icon.Visible = false;
             myMap.MapElements.Add(icon);
 
+            // Check current status of logging
+            string logStatus = await LoggingStatus();
+            if (logStatus != "Error")
+            {
+                if (logStatus == "Enabled")
+                {
+                    loggingEnabled = true;
+                    LoggingButton.Content = "Disable";
+                }
+                else if (logStatus == "Disabled")
+                {
+                    loggingEnabled = false;
+                    LoggingButton.Content = "Enable";
+                }
+                LoggingButton.IsEnabled = true;
+            }
+
             // Start the timer
             updateTimer = new DispatcherTimer();
             updateTimer.Interval = new TimeSpan(0, 0, 1);
@@ -109,11 +133,13 @@ namespace MapControlTest
             updateCount = 0;
             errorBox.Text = "Initialized";
             updateTimer.Start();
+
         }
 
         /// <summary>
         /// Timer event handler which updates the location details by fetching data from server
-        /// This will trigger at regular intervals (5 sec)
+        /// This will trigger at regular intervals (5 sec).
+        /// Updating is enabled/disabled by Start/Stop button
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
@@ -284,8 +310,7 @@ namespace MapControlTest
         {
             try
             {
-                //string jsonText = await GetWebPageStringAsync("http://embeddedworld.co.nf/get_last_loc_json.php");
-                string jsonText = await GetWebPageStringAsync("http://positioning.hol.es/get_last_loc_json.php");
+                string jsonText = await GetWebPageStringAsync(appConfig.locationApiUrl);
                 var serializer = new DataContractJsonSerializer(typeof(RootObject));
                 var ms = new MemoryStream(Encoding.UTF8.GetBytes(jsonText));
                 var data = (RootObject)serializer.ReadObject(ms);
@@ -322,6 +347,7 @@ namespace MapControlTest
 
         }
 
+        // Convert a date-time string to DateTime object
         private DateTime StringToDate(string date, string time)
         {
             if((date != "") && (time != ""))
@@ -332,22 +358,116 @@ namespace MapControlTest
             return new DateTime(0, 0, 0, 0, 0, 0);
         }
 
+        // Handler for Start/Stop button - starts or stops fetching updates
         private void StartStopButton_Click(object sender, RoutedEventArgs e)
         {
             if (trackingEnabled == false) {
                 // Start tracking
                 trackingEnabled = true;
                 StartStopButton.Content = "Stop";
-                errorBox.Text = "Started Logging";
+                errorBox.Text = "Started updating...";
             }
             else
             {
                 // Stop tracking
                 trackingEnabled = false;
                 StartStopButton.Content = "Start";
-                errorBox.Text = "Stopped Logging";
+                errorBox.Text = "Stopped updating...";
             }
         }
+
+        // Handler for Logging Enable/Disable button - disables logging in the server if enabled and vice versa
+        private async void LoggingButton_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                if (loggingEnabled == true)
+                {
+                    // Currently logging is enabled - Disable it
+                    string logStatus = await LoggingStatus(false);
+                    if (logStatus == "Disabled")
+                    {
+                        loggingEnabled = false;
+                        LoggingButton.Content = "Enable";
+                    }
+                    else
+                    {
+                        errorBox.Text += "\nLogging could not be disabled";
+                    }
+                }
+                else
+                {
+                    // Currently logging is disabled - enable it
+                    string logStatus = await LoggingStatus(true);
+                    if (logStatus == "Enabled")
+                    {
+                        loggingEnabled = true;
+                        LoggingButton.Content = "Disable";
+                    }
+                    else
+                    {
+                        errorBox.Text += "Logging could not be enabled";
+                    }
+                }
+            }
+            catch (Exception log_ex)
+            {
+                errorBox.Text = "Exception: " + log_ex.Message;
+            }
+        }
+
+        // Gets current status of logging from server
+        private async Task<string> LoggingStatus()
+        {
+            try
+            {
+                string logStatus = await GetWebPageStringAsync(appConfig.setLogStatusUrl);
+                if((logStatus == "Enabled") || (logStatus == "Disabled"))
+                {
+                    return logStatus;
+                }
+                else
+                {
+                    return "Error";
+                }
+            }
+            catch(Exception e)
+            {
+                throw new Exception("Could not get logging status:", e);
+            }
+        }
+
+        // Enable/Disable logging in the server
+        private async Task<string> LoggingStatus(bool enable)
+        {
+            try
+            {
+                string logStatus = await GetWebPageStringAsync(appConfig.setLogStatusUrl + "?enable=" + enable.ToString());
+                if ((logStatus == "Enabled") || (logStatus == "Disabled"))
+                {
+                    return logStatus;
+                }
+                else
+                {
+                    return "Error";
+                }
+            }
+            catch (Exception e)
+            {
+                throw new Exception("Could not get logging status:", e);
+            }
+        }
+
+    }
+
+    /// <summary>
+    /// Structure to store configuration for this App
+    /// </summary>
+    class AppConfig
+    {
+        public string locationApiUrl { get; set; }
+        public string getLogStatusUrl { get; set; }
+        public string setLogStatusUrl { get; set; }
     }
 
     [DataContract]
