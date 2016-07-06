@@ -22,7 +22,7 @@ using System.Runtime.Serialization.Json;
 using System.Threading.Tasks;
 using System.Runtime.Serialization;
 using System.Globalization;
-
+using static AppConfig;
 
 // The Blank Page item template is documented at http://go.microsoft.com/fwlink/?LinkId=402352&clcid=0x409
 
@@ -33,7 +33,6 @@ namespace MapControlTest
     /// </summary>
     public sealed partial class MainPage : Page
     {
-        private AppConfig appConfig;
         private BasicGeoposition carPos;
         private MapIcon icon;
         private int updateCount;
@@ -62,11 +61,6 @@ namespace MapControlTest
             this.InitializeComponent();
             carPos = new BasicGeoposition();
             icon = new MapIcon();
-            appConfig = new AppConfig();
-
-            // embeddedworld.co.nf/get_last_loc_json.php
-            appConfig.locationApiUrl = "http://positioning.hol.es/get_last_loc_json.php";
-            appConfig.setLogStatusUrl = "http://positioning.hol.es/set_logging.php";
             trackingEnabled = false;
             StartStopButton.Content = "Start";
         }
@@ -310,7 +304,7 @@ namespace MapControlTest
         {
             try
             {
-                string jsonText = await GetWebPageStringAsync(appConfig.locationApiUrl);
+                string jsonText = await GetWebPageStringAsync(AppConfig.locationApiUrl);
                 var serializer = new DataContractJsonSerializer(typeof(RootObject));
                 var ms = new MemoryStream(Encoding.UTF8.GetBytes(jsonText));
                 var data = (RootObject)serializer.ReadObject(ms);
@@ -421,7 +415,7 @@ namespace MapControlTest
         {
             try
             {
-                string logStatus = await GetWebPageStringAsync(appConfig.setLogStatusUrl);
+                string logStatus = await GetWebPageStringAsync(AppConfig.setLogStatusUrl);
                 if((logStatus == "Enabled") || (logStatus == "Disabled"))
                 {
                     return logStatus;
@@ -442,7 +436,7 @@ namespace MapControlTest
         {
             try
             {
-                string logStatus = await GetWebPageStringAsync(appConfig.setLogStatusUrl + "?enable=" + enable.ToString());
+                string logStatus = await GetWebPageStringAsync(AppConfig.setLogStatusUrl + "?enable=" + enable.ToString());
                 if ((logStatus == "Enabled") || (logStatus == "Disabled"))
                 {
                     return logStatus;
@@ -458,16 +452,6 @@ namespace MapControlTest
             }
         }
 
-    }
-
-    /// <summary>
-    /// Structure to store configuration for this App
-    /// </summary>
-    class AppConfig
-    {
-        public string locationApiUrl { get; set; }
-        public string getLogStatusUrl { get; set; }
-        public string setLogStatusUrl { get; set; }
     }
 
     [DataContract]
