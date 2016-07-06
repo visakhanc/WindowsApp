@@ -245,4 +245,4 @@ ModelManifest.xml
 .fake/
 
 # Private files
-#AppConfig.cs
+AppConfig.cs
