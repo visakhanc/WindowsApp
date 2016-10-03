@@ -1,0 +1,3 @@
+ - Enable button refreshed only once - refresh it in cycle
+ - Repeated pressing on buttons (like TestPrev) can cause crash - freeze it while action is being done
+

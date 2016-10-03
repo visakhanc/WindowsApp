@@ -111,6 +111,8 @@
     <None Include="MapControlTest_TemporaryKey.pfx" />
   </ItemGroup>
   <ItemGroup>
+    <Content Include="Assets\dot.png" />
+    <Content Include="Assets\finish.png" />
     <Content Include="Assets\hdg0.png" />
     <Content Include="Assets\hdg120.png" />
     <Content Include="Assets\hdg144.png" />
@@ -127,6 +129,7 @@
     <Content Include="Assets\hdg72.png" />
     <Content Include="Assets\hdg96.png" />
     <Content Include="Assets\mappin.png" />
+    <Content Include="Assets\start.png" />
     <Content Include="Assets\stopped.png" />
     <Content Include="Properties\Default.rd.xml" />
     <Content Include="Assets\LockScreenLogo.scale-200.png" />

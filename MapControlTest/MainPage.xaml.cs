@@ -33,8 +33,8 @@ namespace MapControlTest
     /// </summary>
     public sealed partial class MainPage : Page
     {
-        private BasicGeoposition carPos;
-        private MapIcon icon;
+        private BasicGeoposition carPosCurrent;
+        private MapIcon carIconCurrent;
         private int updateCount;
         private DispatcherTimer updateTimer;
         private bool trackingEnabled;
@@ -54,13 +54,21 @@ namespace MapControlTest
         private RandomAccessStreamReference img_288;
         private RandomAccessStreamReference img_312;
         private RandomAccessStreamReference img_336;
-        private RandomAccessStreamReference img_stop;
+        private RandomAccessStreamReference img_stopped;
+        private RandomAccessStreamReference img_start;
+        private RandomAccessStreamReference img_finish;
+        private RandomAccessStreamReference img_dot;
+        private List<MapIcon> iconSet;
+        private List<LocationObject> locationSet;
+        private List<MapPolyline> pathOutline;
 
         public MainPage()
         {
             this.InitializeComponent();
-            carPos = new BasicGeoposition();
-            icon = new MapIcon();
+            carPosCurrent = new BasicGeoposition();
+            carIconCurrent = new MapIcon();
+            iconSet = new List<MapIcon>();
+            pathOutline = new List<MapPolyline>();
             trackingEnabled = false;
             StartStopButton.Content = "Start";
         }
@@ -73,8 +81,8 @@ namespace MapControlTest
         private async void MyMap_Loaded(object sender, RoutedEventArgs e)
         {
             // Initialize center latitude and longitude some location
-            carPos.Latitude = 9.610135;
-            carPos.Longitude = 76.680732;
+            carPosCurrent.Latitude = 9.610135;
+            carPosCurrent.Longitude = 76.680732;
 
             // Load the image resources
             img_0 = RandomAccessStreamReference.CreateFromUri(new Uri("ms-appx:///Assets/hdg0.png"));
@@ -92,32 +100,40 @@ namespace MapControlTest
             img_288 = RandomAccessStreamReference.CreateFromUri(new Uri("ms-appx:///Assets/hdg288.png"));
             img_312 = RandomAccessStreamReference.CreateFromUri(new Uri("ms-appx:///Assets/hdg312.png"));
             img_336 = RandomAccessStreamReference.CreateFromUri(new Uri("ms-appx:///Assets/hdg336.png"));
-            img_stop = RandomAccessStreamReference.CreateFromUri(new Uri("ms-appx:///Assets/stopped.png"));
-
-            myMap.Center = new Geopoint(carPos);
+            img_stopped = RandomAccessStreamReference.CreateFromUri(new Uri("ms-appx:///Assets/stopped.png"));
+            img_start = RandomAccessStreamReference.CreateFromUri(new Uri("ms-appx:///Assets/start.png"));
+            img_finish = RandomAccessStreamReference.CreateFromUri(new Uri("ms-appx:///Assets/finish.png"));
+            img_dot = RandomAccessStreamReference.CreateFromUri(new Uri("ms-appx:///Assets/dot.png"));
+            myMap.Center = new Geopoint(carPosCurrent);
             myMap.ZoomLevel = 15;
-
-            icon.Image = img_stop;
-            icon.NormalizedAnchorPoint = new Point(0.5, 0.5);
-            icon.Title = "";
-            icon.Visible = false;
-            myMap.MapElements.Add(icon);
+            carIconCurrent.Image = img_stopped;
+            carIconCurrent.NormalizedAnchorPoint = new Point(0.5, 0.5);
+            carIconCurrent.Title = "";
+            carIconCurrent.Visible = false;
+            myMap.MapElements.Add(carIconCurrent);
 
             // Check current status of logging
-            string logStatus = await LoggingStatus();
-            if (logStatus != "Error")
+            try
             {
-                if (logStatus == "Enabled")
+                string logStatus = await LoggingStatus();
+                if (logStatus != "Error")
                 {
-                    loggingEnabled = true;
-                    LoggingButton.Content = "Disable";
+                    if (logStatus == "Enabled")
+                    {
+                        loggingEnabled = true;
+                        LoggingButton.Content = "Disable";
+                    }
+                    else if (logStatus == "Disabled")
+                    {
+                        loggingEnabled = false;
+                        LoggingButton.Content = "Enable";
+                    }
+                    LoggingButton.IsEnabled = true;
                 }
-                else if (logStatus == "Disabled")
-                {
-                    loggingEnabled = false;
-                    LoggingButton.Content = "Enable";
-                }
-                LoggingButton.IsEnabled = true;
+            }
+            catch(Exception ex)
+            {
+                errorBox.Text = "Exception: " + ex.Message;
             }
 
             // Start the timer
@@ -151,20 +167,25 @@ namespace MapControlTest
                 updateTimer.Stop();
 
                 // Get the location data from server
-                RootObject carLocation = await GetLocationData();
+                LocationObject carLocation = await GetLocationData();
 
                 // Update the location in Map
                 UpdateLocation(carLocation.gps_data);
                 updateCount += 1;
                 errorBox.Text = string.Format("Updated {0} times", updateCount);
+                if(carLocation.status.error > 0)
+                {
+                    errorBox.Text += "\nError: " + ((ErrorStatus)carLocation.status.error).ToString();
+                }
+
+                // Start timer again
+                updateTimer.Interval = new TimeSpan(0, 0, 5);
+                updateTimer.Start();
             }
             catch(Exception ex)
             {
                 errorBox.Text = "Exception: " + ex.Message;
             }
-            // Start timer again
-            updateTimer.Interval = new TimeSpan(0, 0, 5);
-            updateTimer.Start();
 
         }
         
@@ -203,111 +224,125 @@ namespace MapControlTest
                     label = "Now";
                 }
             }
-            carPos.Latitude = gpsData.lat;
-            carPos.Longitude = gpsData.lon;
-            myMap.Center = new Geopoint(carPos);
-            icon.Location = myMap.Center;
+            carPosCurrent.Latitude = gpsData.lat;
+            carPosCurrent.Longitude = gpsData.lon;
+            SetMapIcon(carIconCurrent, gpsData);
+            myMap.Center = new Geopoint(carPosCurrent);
+            
+            if (gpsData.speed >= 5)
+            {
+                label += string.Format("\n{0} kph", gpsData.speed);
+            }
+            carIconCurrent.Title = label;
+            carIconCurrent.Visible = true;
+        }
+
+        /// <summary>
+        /// Set properties for a MapIcon, specifically its location and image
+        /// </summary>
+        /// <param name="icon"></param>
+        /// <param name="gpsData"></param>
+        private void SetMapIcon(MapIcon icon, GpsData gpsData)
+        {
             if (gpsData.speed < 5)
             {
-                icon.Image = img_stop;
+                icon.Image = img_stopped;
                 icon.NormalizedAnchorPoint = new Point(0.5, 0.5);
             }
-            else 
+            else
             {
-                label +=
-                string.Format("\n{0}kph", gpsData.speed);
-                //string.Format("\nHeading: {0}°", gpsData.dir);
-
                 // Change icon image based on heading
                 if ((gpsData.dir > 348) && (gpsData.dir <= 12))
                 {
                     icon.Image = img_0;
-                    icon.NormalizedAnchorPoint = new Point(0.5, 0.106);
+                    icon.NormalizedAnchorPoint = new Point(0.5, 0.66);
                 }
                 else if ((gpsData.dir > 12) && (gpsData.dir <= 36))
                 {
                     icon.Image = img_24;
-                    icon.NormalizedAnchorPoint = new Point(0.865, 0.1);
+                    icon.NormalizedAnchorPoint = new Point(0.5, 0.62);
                 }
                 else if ((gpsData.dir > 36) && (gpsData.dir <= 60))
                 {
                     icon.Image = img_48;
-                    icon.NormalizedAnchorPoint = new Point(0.893, 0.11);
+                    icon.NormalizedAnchorPoint = new Point(0.4, 0.55);
                 }
                 else if ((gpsData.dir > 60) && (gpsData.dir <= 84))
                 {
                     icon.Image = img_72;
-                    icon.NormalizedAnchorPoint = new Point(0.9, 0.147);
+                    icon.NormalizedAnchorPoint = new Point(0.34, 0.5);
                 }
                 else if ((gpsData.dir > 84) && (gpsData.dir <= 108))
                 {
                     icon.Image = img_96;
-                    icon.NormalizedAnchorPoint = new Point(0.9, 0.7);
+                    icon.NormalizedAnchorPoint = new Point(0.33, 0.5);
                 }
                 else if ((gpsData.dir > 108) && (gpsData.dir <= 132))
                 {
                     icon.Image = img_120;
-                    icon.NormalizedAnchorPoint = new Point(0.9, 0.875);
+                    icon.NormalizedAnchorPoint = new Point(0.37, 0.5);
                 }
                 else if ((gpsData.dir > 132) && (gpsData.dir <= 156))
                 {
                     icon.Image = img_144;
-                    icon.NormalizedAnchorPoint = new Point(0.883, 0.9);
+                    icon.NormalizedAnchorPoint = new Point(0.47, 0.38);
                 }
                 else if ((gpsData.dir > 156) && (gpsData.dir <= 180))
                 {
                     icon.Image = img_168;
-                    icon.NormalizedAnchorPoint = new Point(0.78, 0.9);
+                    icon.NormalizedAnchorPoint = new Point(0.5, 0.33);
                 }
                 else if ((gpsData.dir > 180) && (gpsData.dir <= 204))
                 {
                     icon.Image = img_192;
-                    icon.NormalizedAnchorPoint = new Point(0.22, 0.9);
+                    icon.NormalizedAnchorPoint = new Point(0.5, 0.33);
                 }
                 else if ((gpsData.dir > 204) && (gpsData.dir <= 228))
                 {
                     icon.Image = img_216;
-                    icon.NormalizedAnchorPoint = new Point(0.117, 0.9);
+                    icon.NormalizedAnchorPoint = new Point(0.58, 0.38);
                 }
                 else if ((gpsData.dir > 228) && (gpsData.dir <= 252))
                 {
                     icon.Image = img_240;
-                    icon.NormalizedAnchorPoint = new Point(0.1, 0.875);
+                    icon.NormalizedAnchorPoint = new Point(0.65, 0.5);
                 }
                 else if ((gpsData.dir > 252) && (gpsData.dir <= 276))
                 {
                     icon.Image = img_264;
-                    icon.NormalizedAnchorPoint = new Point(0.1, 0.7);
+                    icon.NormalizedAnchorPoint = new Point(0.66, 0.5);
                 }
                 else if ((gpsData.dir > 276) && (gpsData.dir <= 300))
                 {
                     icon.Image = img_288;
-                    icon.NormalizedAnchorPoint = new Point(0.1, 0.147);
+                    icon.NormalizedAnchorPoint = new Point(0.65, 0.5);
                 }
                 else if ((gpsData.dir > 300) && (gpsData.dir <= 324))
                 {
                     icon.Image = img_312;
-                    icon.NormalizedAnchorPoint = new Point(0.107, 0.11);
+                    icon.NormalizedAnchorPoint = new Point(0.6, 0.6);
                 }
                 else // ((gpsData.dir > 324) && (gpsData.dir <= 348))
                 {
                     icon.Image = img_336;
-                    icon.NormalizedAnchorPoint = new Point(0.135, 0.1);
+                    icon.NormalizedAnchorPoint = new Point(0.5, 0.66);
                 }
             }
-            icon.Title = label;
-            icon.Visible = true;
+            icon.Location =
+                new Geopoint(new BasicGeoposition()
+                {
+                    Latitude = gpsData.lat,
+                    Longitude = gpsData.lon,
+                });
         }
 
         // Get the location data from server, parse and return the object containing the data
-        private async Task<RootObject> GetLocationData()
+        private async Task<LocationObject> GetLocationData()
         {
             try
             {
-                string jsonText = await GetWebPageStringAsync(AppConfig.locationApiUrl);
-                var serializer = new DataContractJsonSerializer(typeof(RootObject));
-                var ms = new MemoryStream(Encoding.UTF8.GetBytes(jsonText));
-                var data = (RootObject)serializer.ReadObject(ms);
+                string jsonText = await GetWebPageStringAsync(locationApiUrl);
+                var data = DeserializeJson<LocationObject>(jsonText);
                 return data;
             }
             catch (Exception e)
@@ -415,7 +450,7 @@ namespace MapControlTest
         {
             try
             {
-                string logStatus = await GetWebPageStringAsync(AppConfig.setLogStatusUrl);
+                string logStatus = await GetWebPageStringAsync(setLogStatusUrl);
                 if((logStatus == "Enabled") || (logStatus == "Disabled"))
                 {
                     return logStatus;
@@ -452,6 +487,171 @@ namespace MapControlTest
             }
         }
 
+        // Get a set of location samples corresponding to the query provided
+        private async Task<List<LocationObject>> GetLocationSet(int lastCount)
+        {
+            if(lastCount <= 0)
+            {
+                lastCount = 1;
+            }
+            string jsonText = await GetWebPageStringAsync(locationSetApiUrl + string.Format("?last={0}", lastCount));
+            //errorBox.Text = jsonText;
+            var obj = DeserializeJson<List<LocationObject>>(jsonText);
+            return obj;
+        }
+
+        // Deserialize a JSON string to corresponding object type
+        private T DeserializeJson<T> (string jsonString)
+        {
+            DataContractJsonSerializer ser = new DataContractJsonSerializer(typeof(T));
+            MemoryStream ms = new MemoryStream(Encoding.UTF8.GetBytes(jsonString));
+            T obj = (T)ser.ReadObject(ms);
+            return obj;
+        }
+         
+        private async void TestPrev_Click(object sender, RoutedEventArgs e)
+        {
+            int prevCount;
+            if (PrevCount.Text != null)
+            {
+                prevCount = Convert.ToInt32(PrevCount.Text);
+                if (prevCount > 100)
+                    prevCount = 100;
+            }
+            else
+            {
+                prevCount = 3;
+            }
+
+            locationSet = await GetLocationSet(prevCount);
+            DrawIconSet(locationSet);
+            DrawPath(locationSet);
+            myMap.Center = iconSet[0].Location;
+        }
+
+        private void DrawPath(List<LocationObject> locationSet)
+        {
+            int count = 0;
+            if (pathOutline.Count > 0)
+            {
+                foreach(MapPolyline line in pathOutline)
+                {
+                    myMap.MapElements.Remove(line);
+                }
+                pathOutline.Clear();
+            }
+            count = locationSet.Count;
+            while(count > 1)
+            {
+                MapPolyline line = new MapPolyline();
+                line.Path = new Geopath(new List<BasicGeoposition>()
+                {
+                    new BasicGeoposition() { Latitude = locationSet[count-1].gps_data.lat, Longitude = locationSet[count-1].gps_data.lon },
+                    new BasicGeoposition() { Latitude = locationSet[count-2].gps_data.lat, Longitude = locationSet[count-2].gps_data.lon }
+                });
+                line.StrokeDashed = true;
+                line.StrokeThickness = 3;
+                line.StrokeColor = Windows.UI.Colors.Red;
+                line.ZIndex = 1;
+                pathOutline.Add(line);
+                myMap.MapElements.Add(line);
+                count--;
+            }
+        }
+
+        private void DrawIconSet(List<LocationObject> locationSet)
+        {
+            if (iconSet.Count > 0)
+            {
+                foreach (MapIcon icon in iconSet)
+                {
+                    myMap.MapElements.Remove(icon);
+                }
+                iconSet.Clear();
+            }
+            foreach (LocationObject location in locationSet)
+            {
+                //errorBox.Text += string.Format("{0}\n", location.gps_data.time);
+                MapIcon icon = new MapIcon();
+                //SetMapIcon(icon, location.gps_data);  // shows the detailed map icon
+
+                SetPathIcon(icon, location);
+                
+                iconSet.Add(icon);
+                myMap.MapElements.Add(icon);
+            }
+        }
+
+        /// <summary>
+        /// Set image and location properties for a MapIcon to be included in a path
+        /// </summary>
+        /// <param name="icon"></param>
+        /// <param name="location"></param>
+        private void SetPathIcon(MapIcon icon, LocationObject location)
+        {
+            if (locationSet.IndexOf(location) == 0) // starting location
+            {
+                icon.Image = img_finish;
+                icon.ZIndex = 3;
+            }
+            else if (locationSet.IndexOf(location) == (locationSet.Count - 1))  // ending location
+            {
+                icon.Image = img_start;
+                icon.ZIndex = 3;
+            }
+            else
+            {
+                // just show a dot icon
+                icon.Image = img_dot;
+                icon.ZIndex = 2;
+            }
+            icon.Location = new Geopoint(new BasicGeoposition()
+            {
+                Latitude = location.gps_data.lat,
+                Longitude = location.gps_data.lon
+            });
+            icon.NormalizedAnchorPoint = new Point(0.5, 0.5);
+        }
+
+        private void myMap_MapElementClick(MapControl sender, MapElementClickEventArgs args)
+        {
+            MapIcon clicked_icon = args.MapElements.FirstOrDefault(x => x is MapIcon) as MapIcon;
+            int index = iconSet.IndexOf(clicked_icon);
+
+            if (index >= 0)
+            {
+
+                if (clicked_icon.Title == "")   // Show detailed MapIcon
+                {
+                    GpsData gpsData = locationSet[index].gps_data;
+                    SetMapIcon(clicked_icon, gpsData);
+                    DateTime time = StringToDate(gpsData.date, gpsData.time);
+                    string title = "";
+                    if (clicked_icon.Image != img_stopped)
+                    {
+                         title = string.Format("{0} kph", gpsData.speed);
+                    }
+                    title += string.Format("\n{0:T}", time);
+                    /*
+                    if (time.Year == DateTime.Now.Year)
+                    {
+                        title += string.Format("\n{0:ddd, MMM d}", time);
+                    }
+                    else
+                    {
+                        title += string.Format("\n{0:D}", time);
+                    }
+                    */
+                    clicked_icon.Title = title;
+                    clicked_icon.ZIndex = 3;
+                }
+                else  // Show normal path icon
+                {
+                    clicked_icon.Title = "";
+                    SetPathIcon(clicked_icon, locationSet[index]);
+                }
+            }                    
+        }
     }
 
     [DataContract]
@@ -481,11 +681,21 @@ namespace MapControlTest
     }
 
     [DataContract]
-    public class RootObject
+    public class LocationObject
     {
         [DataMember]
         public GpsData gps_data { get; set; }
         [DataMember]
         public Status status { get; set; }
     }
+
+    public enum ErrorStatus
+    {
+        NoError = 0,
+        SqlQueryError = 1,
+        GpsNoCommunication = 2,
+        GpsNoProgress = 3
+    }
+
+
 }

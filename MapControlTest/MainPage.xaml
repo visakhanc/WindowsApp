@@ -17,13 +17,16 @@
         <StackPanel Grid.Row="1">
             <Button x:Name="StartStopButton" Content="" Margin="0,10,0,10" Click="StartStopButton_Click"  
                 HorizontalAlignment="Center" VerticalAlignment="Top"/>
-            <Button x:Name="LoggingButton" Content="Enable" IsEnabled="False" Click="LoggingButton_Click"
-                HorizontalAlignment="Center"/>
-
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                <Button x:Name="LoggingButton" Content="Enable" IsEnabled="False" Click="LoggingButton_Click" Margin="0,0,10,0"/>
+                <Button x:Name="TestPrev" Content="TestPrev" Click="TestPrev_Click" Margin="0,0,10,0"/>
+                <TextBox x:Name="PrevCount" Margin="0,0,10,0" Width="50"/>
+            </StackPanel>
         </StackPanel>
         <TextBlock Name="errorBox" Grid.Row="2" TextAlignment="Center" TextWrapping="Wrap"/>
-        <maps:MapControl x:Name="myMap" TransitFeaturesVisible="False" HorizontalAlignment="Stretch"
-                         VerticalAlignment="Stretch" Loaded="MyMap_Loaded" RotateInteractionMode="Disabled"
+        <maps:MapControl x:Name="myMap" TransitFeaturesVisible="False" RotateInteractionMode="Disabled"
+                         HorizontalAlignment="Stretch" VerticalAlignment="Stretch" 
+                         Loaded="MyMap_Loaded" MapElementClick="myMap_MapElementClick"
                          MapServiceToken="jNX12JzTvR7chFjby1PN~qK56euxFkLwXAQTZ6ftWbw~AgCyixF1WaNpROiSEo0Hz8uENBrhfdP7UhhIRkDi7DLlHg5s1VIiIDFZERY7Kd6o"
                          />
     </Grid>
