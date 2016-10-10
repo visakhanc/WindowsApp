@@ -36,9 +36,10 @@ namespace MapControlTest
         private BasicGeoposition carPosCurrent;
         private MapIcon carIconCurrent;
         private int updateCount;
+        // Timer for periodic location update
         private DispatcherTimer updateTimer;
-        private bool trackingEnabled;
-        private bool loggingEnabled;
+        // Whether periodic location updating is enabled or not
+        // Enable or disable live tracking. This setting is saved on the server
         private RandomAccessStreamReference img_0;
         private RandomAccessStreamReference img_24;
         private RandomAccessStreamReference img_48;
@@ -61,6 +62,7 @@ namespace MapControlTest
         private List<MapIcon> iconSet;
         private List<LocationObject> locationSet;
         private List<MapPolyline> pathOutline;
+        private int browseIconIndex;
 
         public MainPage()
         {
@@ -69,8 +71,6 @@ namespace MapControlTest
             carIconCurrent = new MapIcon();
             iconSet = new List<MapIcon>();
             pathOutline = new List<MapPolyline>();
-            trackingEnabled = false;
-            StartStopButton.Content = "Start";
         }
 
         /// <summary>
@@ -112,24 +112,31 @@ namespace MapControlTest
             carIconCurrent.Visible = false;
             myMap.MapElements.Add(carIconCurrent);
 
-            // Check current status of logging
+            // Check current status of tracking
             try
             {
-                string logStatus = await LoggingStatus();
-                if (logStatus != "Error")
+                TrackProgressRing.IsActive = true;
+                string trackStatus = await LoggingStatus();
+                TrackProgressRing.IsActive = false;
+                TrackControlButton.IsEnabled = true;
+                if (trackStatus == "Enabled")
                 {
-                    if (logStatus == "Enabled")
-                    {
-                        loggingEnabled = true;
-                        LoggingButton.Content = "Disable";
-                    }
-                    else if (logStatus == "Disabled")
-                    {
-                        loggingEnabled = false;
-                        LoggingButton.Content = "Enable";
-                    }
-                    LoggingButton.IsEnabled = true;
+                    TrackControlButton.Content = "Enabled";
+                    TrackControlButton.IsChecked = true;
+                    UpdateText.Visibility = Visibility.Visible;
                 }
+                else if (trackStatus == "Disabled")
+                {
+                    TrackControlButton.Content = "Disabled";
+                    TrackControlButton.IsChecked = false;
+                }
+                else
+                {
+                    TrackControlButton.IsEnabled = false;
+                    errorBox.Text += "\nTracking status could not be obtained!";
+                }
+                UpdateButton.IsEnabled = true;
+                UpdateButton.IsChecked = true;
             }
             catch(Exception ex)
             {
@@ -141,9 +148,9 @@ namespace MapControlTest
             updateTimer.Interval = new TimeSpan(0, 0, 1);
             updateTimer.Tick += UpdateTimer_Tick;
             updateCount = 0;
+            browseIconIndex = 0;
             errorBox.Text = "Initialized";
             updateTimer.Start();
-
         }
 
         /// <summary>
@@ -155,8 +162,8 @@ namespace MapControlTest
         /// <param name="e"></param>
         private async void UpdateTimer_Tick(object sender, object e)
         {
-            // Dont retrieve data from server if tracking disabled
-            if(trackingEnabled == false)
+            // Dont retrieve data from server if updating is disabled
+            if(UpdateButton.IsChecked == false)
             {
                 return;
             }
@@ -178,7 +185,7 @@ namespace MapControlTest
                     errorBox.Text += "\nError: " + ((ErrorStatus)carLocation.status.error).ToString();
                 }
 
-                // Start timer again
+                // Start timer again    
                 updateTimer.Interval = new TimeSpan(0, 0, 5);
                 updateTimer.Start();
             }
@@ -334,8 +341,26 @@ namespace MapControlTest
                     Latitude = gpsData.lat,
                     Longitude = gpsData.lon,
                 });
+            icon.ZIndex = 3;
+            icon.Visible = true;
         }
 
+        /// <summary>
+        /// Creates a string to use as label for a Map Icon
+        /// </summary>
+        /// <param name="gpsData"></param>
+        /// <returns></returns>
+        private string MapIconLabel(MapIcon icon, GpsData gpsData)
+        {
+            DateTime time = StringToDate(gpsData.date, gpsData.time);
+            string label = "";
+            if (icon.Image != img_stopped)
+            {
+                label = string.Format("{0} kph\n", gpsData.speed);
+            }
+            label += string.Format("{0:T}", time);
+            return label;
+        }
         // Get the location data from server, parse and return the object containing the data
         private async Task<LocationObject> GetLocationData()
         {
@@ -388,55 +413,44 @@ namespace MapControlTest
         }
 
         // Handler for Start/Stop button - starts or stops fetching updates
-        private void StartStopButton_Click(object sender, RoutedEventArgs e)
+        private void UpdateButton_Click(object sender, RoutedEventArgs e)
         {
-            if (trackingEnabled == false) {
+            if (UpdateButton.IsChecked == true) {
                 // Start tracking
-                trackingEnabled = true;
-                StartStopButton.Content = "Stop";
-                errorBox.Text = "Started updating...";
+                UpdateButton.Content = "On";
+                errorBox.Text += "\nStarted updating...";
             }
             else
             {
                 // Stop tracking
-                trackingEnabled = false;
-                StartStopButton.Content = "Start";
-                errorBox.Text = "Stopped updating...";
+                UpdateButton.Content = "Off";
+                errorBox.Text += "\nStopped updating...";
             }
         }
 
         // Handler for Logging Enable/Disable button - disables logging in the server if enabled and vice versa
-        private async void LoggingButton_Click(object sender, RoutedEventArgs e)
+        private async void TrackControlButton_Click(object sender, RoutedEventArgs e)
         {
             try
             {
-                if (loggingEnabled == true)
+                // Disable or Enable tracking on server
+                bool enableTracking = (bool)TrackControlButton.IsChecked;
+                TrackProgressRing.IsActive = true;
+                TrackControlButton.IsEnabled = false;
+                string trackStatus = await LoggingStatus(enableTracking);
+                TrackProgressRing.IsActive = false;
+                TrackControlButton.IsEnabled = true;
+                if (trackStatus == "Disabled")
                 {
-                    // Currently logging is enabled - Disable it
-                    string logStatus = await LoggingStatus(false);
-                    if (logStatus == "Disabled")
-                    {
-                        loggingEnabled = false;
-                        LoggingButton.Content = "Enable";
-                    }
-                    else
-                    {
-                        errorBox.Text += "\nLogging could not be disabled";
-                    }
+                    TrackControlButton.Content = "Disabled";
+                }
+                else if (trackStatus == "Enabled")
+                {
+                    TrackControlButton.Content = "Enabled";
                 }
                 else
                 {
-                    // Currently logging is disabled - enable it
-                    string logStatus = await LoggingStatus(true);
-                    if (logStatus == "Enabled")
-                    {
-                        loggingEnabled = true;
-                        LoggingButton.Content = "Disable";
-                    }
-                    else
-                    {
-                        errorBox.Text += "Logging could not be enabled";
-                    }
+                    errorBox.Text += "\nNot able to control Tracking!";
                 }
             }
             catch (Exception log_ex)
@@ -500,6 +514,22 @@ namespace MapControlTest
             return obj;
         }
 
+        private async Task<List<LocationObject>> GetLocationSet(DateTimeOffset date)
+        {
+            try
+            {
+                string url = locationSetApiUrl + string.Format("?date={0:yyyy-MM-dd}", date);
+                errorBox.Text += "\n" + url;
+                string jsonText = await GetWebPageStringAsync(url);
+                var obj = DeserializeJson<List<LocationObject>>(jsonText);
+                return obj;
+            }
+            catch(Exception e)
+            {
+                throw new Exception("Could not get location set", e);
+            }
+        }
+
         // Deserialize a JSON string to corresponding object type
         private T DeserializeJson<T> (string jsonString)
         {
@@ -508,7 +538,8 @@ namespace MapControlTest
             T obj = (T)ser.ReadObject(ms);
             return obj;
         }
-         
+
+#if (NULL)  
         private async void TestPrev_Click(object sender, RoutedEventArgs e)
         {
             int prevCount;
@@ -528,10 +559,11 @@ namespace MapControlTest
             DrawPath(locationSet);
             myMap.Center = iconSet[0].Location;
         }
-
-        private void DrawPath(List<LocationObject> locationSet)
+#endif
+        private void CreatePath(List<LocationObject> locationSet)
         {
             int count = 0;
+            int i = 0;
             if (pathOutline.Count > 0)
             {
                 foreach(MapPolyline line in pathOutline)
@@ -541,25 +573,31 @@ namespace MapControlTest
                 pathOutline.Clear();
             }
             count = locationSet.Count;
-            while(count > 1)
+            while(i < (count-1))
             {
                 MapPolyline line = new MapPolyline();
                 line.Path = new Geopath(new List<BasicGeoposition>()
                 {
-                    new BasicGeoposition() { Latitude = locationSet[count-1].gps_data.lat, Longitude = locationSet[count-1].gps_data.lon },
-                    new BasicGeoposition() { Latitude = locationSet[count-2].gps_data.lat, Longitude = locationSet[count-2].gps_data.lon }
+                    new BasicGeoposition() { Latitude = locationSet[i].gps_data.lat, Longitude = locationSet[i].gps_data.lon },
+                    new BasicGeoposition() { Latitude = locationSet[i+1].gps_data.lat, Longitude = locationSet[i+1].gps_data.lon }
                 });
-                line.StrokeDashed = true;
-                line.StrokeThickness = 3;
+                // If the seperation between samples is greater than, say 30sec, show dashed line
+                DateTime t2 = StringToDate(locationSet[i].gps_data.date, locationSet[i].gps_data.time);
+                DateTime t1 = StringToDate(locationSet[i+1].gps_data.date, locationSet[i+1].gps_data.time);
+                if ((t1 - t2) > TimeSpan.FromSeconds(30))
+                {
+                    line.StrokeDashed = true;
+                }
+                line.StrokeThickness = 2;
                 line.StrokeColor = Windows.UI.Colors.Red;
                 line.ZIndex = 1;
                 pathOutline.Add(line);
                 myMap.MapElements.Add(line);
-                count--;
+                i++;
             }
         }
 
-        private void DrawIconSet(List<LocationObject> locationSet)
+        private void CreateIconSet(List<LocationObject> locationSet, bool visible)
         {
             if (iconSet.Count > 0)
             {
@@ -576,9 +614,19 @@ namespace MapControlTest
                 //SetMapIcon(icon, location.gps_data);  // shows the detailed map icon
 
                 SetPathIcon(icon, location);
-                
+                icon.Visible = visible;
                 iconSet.Add(icon);
                 myMap.MapElements.Add(icon);
+            }
+
+        }
+
+        private void SwitchPath(bool detailed)
+        {
+            int count = iconSet.Count;
+            foreach (MapIcon icon in iconSet)
+            {
+                icon.Visible = detailed;
             }
         }
 
@@ -591,12 +639,12 @@ namespace MapControlTest
         {
             if (locationSet.IndexOf(location) == 0) // starting location
             {
-                icon.Image = img_finish;
+                icon.Image = img_start;
                 icon.ZIndex = 3;
             }
             else if (locationSet.IndexOf(location) == (locationSet.Count - 1))  // ending location
             {
-                icon.Image = img_start;
+                icon.Image = img_finish;
                 icon.ZIndex = 3;
             }
             else
@@ -616,23 +664,25 @@ namespace MapControlTest
         private void myMap_MapElementClick(MapControl sender, MapElementClickEventArgs args)
         {
             MapIcon clicked_icon = args.MapElements.FirstOrDefault(x => x is MapIcon) as MapIcon;
-            int index = iconSet.IndexOf(clicked_icon);
-
-            if (index >= 0)
+            int icon_index = iconSet.IndexOf(clicked_icon);
+            MapPolyline clicked_line = args.MapElements.FirstOrDefault(x => x is MapPolyline) as MapPolyline;
+            int line_index = pathOutline.IndexOf(clicked_line);
+            if (icon_index >= 0)
             {
 
                 if (clicked_icon.Title == "")   // Show detailed MapIcon
                 {
-                    GpsData gpsData = locationSet[index].gps_data;
+                    /*
+                    GpsData gpsData = locationSet[icon_index].gps_data;
                     SetMapIcon(clicked_icon, gpsData);
                     DateTime time = StringToDate(gpsData.date, gpsData.time);
                     string title = "";
                     if (clicked_icon.Image != img_stopped)
                     {
-                         title = string.Format("{0} kph", gpsData.speed);
+                         title = string.Format("{0} kph\n", gpsData.speed);
                     }
-                    title += string.Format("\n{0:T}", time);
-                    /*
+                    title += string.Format("{0:T}", time);
+                    
                     if (time.Year == DateTime.Now.Year)
                     {
                         title += string.Format("\n{0:ddd, MMM d}", time);
@@ -641,16 +691,96 @@ namespace MapControlTest
                     {
                         title += string.Format("\n{0:D}", time);
                     }
-                    */
                     clicked_icon.Title = title;
                     clicked_icon.ZIndex = 3;
+                    */
                 }
                 else  // Show normal path icon
                 {
                     clicked_icon.Title = "";
-                    SetPathIcon(clicked_icon, locationSet[index]);
+                    SetPathIcon(clicked_icon, locationSet[icon_index]);
                 }
             }                    
+            if(line_index >= 0)
+            {
+                MapIcon icon = iconSet[line_index];
+                GpsData gps_data = locationSet[line_index].gps_data;
+                SetMapIcon(icon, gps_data);
+                icon.Title = MapIconLabel(icon, gps_data);
+                browseIconIndex = line_index;
+            }
+        }
+
+        // Switch between detailed and minimal path
+        private void DetailedView_Tapped(object sender, TappedRoutedEventArgs e)
+        {
+            if (DetailedView.IsChecked.HasValue)
+            {
+                SwitchPath(DetailedView.IsChecked.Value);
+            }
+        }
+
+        private async void HistoryButton_Click(object sender, RoutedEventArgs e)
+        {
+            if(HistoryDate.Date.HasValue)
+            {
+                // Stop location updates
+                UpdateButton.IsChecked = false;
+                UpdateButton.Content = "Off";
+                // Get history from server
+                DateTimeOffset date = HistoryDate.Date.Value;
+                HistoryProgessRing.IsActive = true;
+                locationSet = await GetLocationSet(date);
+                HistoryProgessRing.IsActive = false;
+                if (locationSet[0].status.error != 0)
+                {
+                    errorBox.Text = "\nNo records found for the date";
+                }
+                else
+                {
+                    //Draw path on map
+                    CreateIconSet(locationSet, false);
+                    CreatePath(locationSet);
+                    //Show Start and End locations
+                    int count = iconSet.Count;
+                    SetPathIcon(iconSet[0], locationSet[0]);
+                    iconSet[0].Visible = true;
+                    if (count > 0)
+                    {
+                        SetPathIcon(iconSet[count - 1], locationSet[count - 1]);
+                        iconSet[count - 1].Visible = true;
+                    }
+                    browseIconIndex = 0;
+                    myMap.Center = iconSet[0].Location;
+                    DetailedView.IsChecked = false;
+                }
+            }
+        }
+
+        private async void PrevLocButton_Click(object sender, RoutedEventArgs e)
+        {
+            if(browseIconIndex > 0)
+            {
+                SetPathIcon(iconSet[browseIconIndex], locationSet[browseIconIndex]);
+                iconSet[browseIconIndex].Title = "";
+                browseIconIndex--;
+                await myMap.TrySetViewAsync(iconSet[browseIconIndex].Location, null, null, null, MapAnimationKind.Bow);
+                SetMapIcon(iconSet[browseIconIndex], locationSet[browseIconIndex].gps_data);
+                iconSet[browseIconIndex].Title = MapIconLabel(iconSet[browseIconIndex], locationSet[browseIconIndex].gps_data);
+            }
+        }
+
+        private async void NextLocButton_Click(object sender, RoutedEventArgs e)
+        {
+            if(browseIconIndex < (iconSet.Count - 1))
+            {
+                SetPathIcon(iconSet[browseIconIndex], locationSet[browseIconIndex]);
+                iconSet[browseIconIndex].Title = "";
+                browseIconIndex++;
+                await myMap.TrySetViewAsync(iconSet[browseIconIndex].Location, null, null, null, MapAnimationKind.Bow);
+                SetMapIcon(iconSet[browseIconIndex], locationSet[browseIconIndex].gps_data);
+                iconSet[browseIconIndex].Title = MapIconLabel(iconSet[browseIconIndex], locationSet[browseIconIndex].gps_data);
+            }
         }
     }
 
